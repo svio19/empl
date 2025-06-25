@@ -1,5 +1,5 @@
-# Multi-stage build for optimized production image
-FROM node:18-alpine as build
+# Alternative approach using Node.js serve package
+FROM node:18-alpine
 
 # Set working directory
 WORKDIR /app
@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies including serve globally
+RUN npm ci && npm install -g serve
 
 # Copy source code
 COPY . .
@@ -16,17 +16,21 @@ COPY . .
 # Build the app
 RUN npm run build
 
-# Production stage
-FROM nginx:alpine
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S reactuser -u 1001
 
-# Copy built app from build stage
-COPY --from=build /app/build /usr/share/nginx/html
+# Change ownership of the app directory
+RUN chown -R reactuser:nodejs /app
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Switch to non-root user
+USER reactuser
 
-# Expose port 80
-EXPOSE 80
+# Expose port 3000
+EXPOSE 3000
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000 || exit 1
+
+# Start the application using serve
+CMD ["serve", "-s", "build", "-l", "3000"]
